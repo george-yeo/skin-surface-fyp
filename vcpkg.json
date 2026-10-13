@@ -1,0 +1,9 @@
+{
+  "name": "physics-engine",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "cgal",
+    "glm",
+    "glfw3"
+  ]
+}

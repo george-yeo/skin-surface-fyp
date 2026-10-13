@@ -1,0 +1,105 @@
+@startuml architecture-layers
+' ============================================================================
+'  cpp-things/physics — module layers (as-is)
+'  Derived 2026-10-10 from the #include graph of nacre/ + apps/ after the
+'  Nacre restructure (phases 0–8). Module level: one box per namespace,
+'  grouped by CMake target. Edges are the transitive reduction of
+'  "includes headers from" — a module may also use anything reachable
+'  below it. Full table: claude/architecture.md "Dependency shape".
+'  No layering violations remain; the build enforces the engine/app split.
+' ============================================================================
+
+top to bottom direction
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName "Segoe UI"
+skinparam defaultFontSize 11
+skinparam packageStyle rectangle
+skinparam ArrowColor #444444
+skinparam nodesep 25
+skinparam ranksep 40
+skinparam legendBackgroundColor #FFFFFF
+skinparam legendBorderColor #999999
+
+skinparam package {
+  BorderColor #555555
+  FontStyle bold
+}
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #666666
+  BackgroundColor<<header-only>> #EEF3FF
+  BackgroundColor<<app>> #EEF8EE
+  BackgroundColor<<external>> #F2F2F2
+  BorderColor<<external>> #A0A0A0
+  FontColor<<external>> #707070
+  StereotypeFontColor<<external>> #8A8A8A
+}
+
+package "SkinSurfaceFYP  (exe)" as tApp {
+  component "<b>skin</b>  +  <b>skin::vis</b>\n----\nSkinApp, CameraController\nComplexVisualiser, EntityLayer\nDebugPanel, Spawn, UserSettings" as skin <<app>>
+}
+
+package "skin_geometry  (static lib, no GPU)" as tGeom {
+  component "<b>skin::geometry</b>\n----\nComplexModel, PowerComplex\nBoundedVoronoi, ConvexPolytope\nMixedComplex\nWeightedPoint, WeightedPointParser" as geometry <<app>>
+}
+
+package "nacre  (static lib)" as tNacre {
+  component "<b>nacre::app</b>\n----\nApp, AppConfig" as app
+  component "<b>nacre::render</b>\n----\nRasteriserRenderer, Renderer\nSceneStage, VisualisationStage, ImGuiPass\nRenderScene, syncRenderScene, toCameraData\nFrameResources, DrawEntry, FrameStage" as render
+  component "<b>nacre::scene</b>\n----\nCamera\nTransform / Mesh / Color /\nPoint / Line components" as scene
+  component "<b>nacre::assets</b>\n----\nMeshManager, Mesh, MeshObjLoader\nMaterialManager, Material, TestMaterial\nHandles, MeshPass, MeshTypes, Vertex" as assets
+  component "<b>nacre::ecs</b>\n----\nECS, EntityManager\nComponentManager, ComponentStorage\nSystemManager, System, Types" as ecs
+  component "<b>nacre::platform</b>\n----\nGlfwWindow\nInputManager, InputBinding, InputAction" as platform
+  component "<b>nacre::vk</b>\n----\nInstance, Surface, Device, Swapchain\nFrame, RenderContext, Check\nBuffer, Image, DepthImage\nDescriptor{Pool,Set,SetLayout}, Pipeline\nShader{Cache,Module,Effect}, Command{Pool,Buffer}" as vk
+}
+
+package "nacre_core  (INTERFACE)" as tCore {
+  component "<b>nacre::core</b>\n----\nLogger, FatalError\nTimer, ActionQueue" as core <<header-only>>
+  component "<b>nacre::shaders</b>\n----\nCameraData, ObjectData\n(C++ mirrors of GLSL layouts)" as shaders <<header-only>>
+}
+
+package "external" as tExt {
+  component "Vulkan" as xVulkan <<external>>
+  component "GLFW" as xGlfw <<external>>
+  component "ImGui" as xImgui <<external>>
+  component "tinyobjloader" as xTinyobj <<external>>
+  component "CGAL" as xCgal <<external>>
+  component "nlohmann-json" as xJson <<external>>
+}
+
+' --- module dependencies (transitive reduction) ---
+skin --> app
+skin --> geometry
+app --> render
+render --> scene
+render --> ecs
+render --> platform
+render --> shaders
+scene --> assets
+assets --> vk
+vk --> core
+ecs --> core
+platform --> core
+geometry --> core
+
+' --- external libraries ---
+vk ..> xVulkan
+platform ..> xGlfw
+render ..> xImgui
+skin ..> xImgui
+assets ..> xTinyobj
+geometry ..> xCgal
+geometry ..> xJson
+
+legend right
+  <b>Module layers</b> (2026-10-10)
+  ——— depends on (transitive reduction)
+  ·······> external library
+  <back:#EEF3FF>  header-only  </back>   <back:#EEF8EE>  app code  </back>
+  glm is used throughout (via nacre_core).
+  GLFW and Vulkan meet only in nacre::app.
+  Nothing in nacre includes apps/ (no include root).
+endlegend
+
+@enduml
