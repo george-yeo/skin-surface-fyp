@@ -45,17 +45,20 @@ std::optional<std::array<glm::dvec3, 2>> clipSegment(const glm::dvec3& p, const 
 
 } // namespace
 
-Aabb skinBounds(const PowerComplex& complex, double padding) {
-    const auto& vertices = complex.vertices();
-    if (vertices.empty()) {
-        return {};
-    }
-
+Aabb skinBounds(const PowerComplex& complex, double padding, uint32_t inputCount) {
     Aabb box{.min = glm::dvec3(INF), .max = glm::dvec3(-INF)};
-    for (const DelaunayVertex& vertex : vertices) {
+    bool any = false;
+    for (const DelaunayVertex& vertex : complex.vertices()) {
+        if (vertex.inputIndex >= inputCount) {
+            continue;
+        }
+        any = true;
         const double radius = std::sqrt(std::max(vertex.weight, 0.0));
         box.min = glm::min(box.min, vertex.position - radius);
         box.max = glm::max(box.max, vertex.position + radius);
+    }
+    if (!any) {
+        return {};
     }
     const double pad = std::max(padding * glm::length(box.max - box.min), MIN_PADDING);
     box.min -= pad;

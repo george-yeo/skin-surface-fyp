@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <optional>
 #include <vector>
 
@@ -23,8 +24,10 @@ struct BoundedVoronoi {
 };
 
 // Bounds of every ball, padded by `padding` times the diagonal. The skin lies
-// inside the union of the balls, so it lies inside this box.
-Aabb skinBounds(const PowerComplex& complex, double padding = 0.05);
+// inside the union of the balls, so it lies inside this box. Vertices with
+// inputIndex >= inputCount (ghost points) are left out.
+Aabb skinBounds(const PowerComplex& complex, double padding = 0.05,
+                uint32_t inputCount = UINT32_MAX);
 
 // For drawing the diagram only: the skin box grown to include every Voronoi
 // vertex within `reach` skin-box diagonals of its centre (farther ones come

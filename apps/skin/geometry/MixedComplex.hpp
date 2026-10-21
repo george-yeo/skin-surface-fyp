@@ -23,9 +23,19 @@ struct MixedComplex {
     std::array<uint32_t, 4> clipped{}; // kept cells cut by the box, by simplex dimension
 };
 
-// Mixed cells intersected with `box`, which must contain every vertex
-// (skinBounds does); they tile the box. Empty unless the complex is 3D. Logs
-// volume and prism orthogonality checks.
+// The cells' corners merged into shared ids, so neighbouring cells index the
+// same points on a shared wall. Face rings follow MixedCell::faces.
+struct MixedComplexTopology {
+    std::vector<glm::dvec3> points;
+    std::vector<std::vector<std::vector<uint32_t>>> cellFaces; // [cell][face] -> cyclic ids
+};
+
+// Mixed cells intersected with `box`; they tile the box. Empty unless the
+// complex is 3D. Logs volume and prism orthogonality checks.
 MixedComplex buildMixedComplex(const PowerComplex& complex, const Aabb& box, double s);
+
+// Merges corners closer than the clipping tolerance. Faces left with fewer
+// than 3 distinct ids are dropped.
+MixedComplexTopology weldMixedComplex(const MixedComplex& mixed);
 
 } // namespace skin::geometry

@@ -1,8 +1,15 @@
 #pragma once
 
+#include <string>
+
+#include "skin/geometry/SkinMesh.hpp"
+
 namespace skin::vis {
 
 struct UserSettings {
+    std::string inputFile = "assets/test/points_simple.json";
+
+    bool showPoints = true; // small markers at the input points
     bool showWeights = false;
     bool wireframe = false;
 
@@ -34,6 +41,12 @@ struct UserSettings {
     bool showMixedEdgeCells = true;
     bool showMixedTriangleCells = true;
     bool showMixedTetCells = true;
+
+    bool showSkin = false;
+    bool skinColorByCell = true;
+    geometry::SkinMesher skinMesher = geometry::SkinMesher::KruithofVegter;
+    float skinRefineK = 1.0f; // marching tets: max tet edge / patch radius near the skin
+    int skinCgalSubdivisions = 1;
 
     bool operator==(const UserSettings&) const = default;
 };

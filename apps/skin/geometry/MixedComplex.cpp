@@ -6,6 +6,7 @@
 
 #include "skin/geometry/BoundedVoronoi.hpp"
 #include "skin/geometry/ConvexPolytope.hpp"
+#include "skin/geometry/PointWelder.hpp"
 #include "skin/geometry/PowerComplex.hpp"
 #include <nacre/core/Logger.hpp>
 
@@ -14,6 +15,8 @@ namespace skin::geometry {
 namespace {
 
 constexpr double SANITY_TOLERANCE = 1e-6;
+// Same relative tolerance ConvexPolytope clips with.
+constexpr double WELD_EPSILON = 1e-10;
 constexpr double TILING_TOLERANCE = 1e-9;
 // Cells at or below this fraction of the box volume are treated as flat.
 constexpr double MIN_RELATIVE_CELL_VOLUME = 1e-12;
@@ -46,18 +49,61 @@ Polygons prismFaces(const std::vector<glm::dvec3>& cap0, const std::vector<glm::
 
 } // namespace
 
+MixedComplexTopology weldMixedComplex(const MixedComplex& mixed) {
+    double extent = 0.0;
+    for (const MixedCell& cell : mixed.cells) {
+        for (const auto& face : cell.faces) {
+            for (const glm::dvec3& p : face) {
+                const glm::dvec3 a = glm::abs(p);
+                extent = std::max({extent, a.x, a.y, a.z});
+            }
+        }
+    }
+    PointWelder welder(WELD_EPSILON * (1.0 + extent));
+
+    MixedComplexTopology result;
+    result.cellFaces.reserve(mixed.cells.size());
+    for (const MixedCell& cell : mixed.cells) {
+        auto& faces = result.cellFaces.emplace_back();
+        for (const auto& face : cell.faces) {
+            std::vector<uint32_t> ring;
+            for (const glm::dvec3& p : face) {
+                const uint32_t id = welder.idOf(p);
+                if (ring.empty() || ring.back() != id) {
+                    ring.push_back(id);
+                }
+            }
+            while (ring.size() > 1 && ring.front() == ring.back()) {
+                ring.pop_back();
+            }
+            if (ring.size() >= 3) {
+                faces.push_back(std::move(ring));
+            }
+        }
+    }
+    result.points = welder.takePoints();
+    return result;
+}
+
 MixedComplex buildMixedComplex(const PowerComplex& complex, const Aabb& box, double s) {
     MixedComplex result;
     if (complex.tets().empty()) {
         return result;
     }
 
-    // x = (1 - s) q + s y with x and q in the box puts y in the box scaled by
-    // (2 - s) / s, so duals clipped to that lose nothing inside the box.
-    const BoundedVoronoi duals =
-        buildBoundedVoronoi(complex, scaledAboutCentre(box, (2.0 - s) / s));
-
     const auto& vertices = complex.vertices();
+
+    // x = (1 - s) q + s y with x and q in a box H puts y in H scaled by
+    // (2 - s) / s, so duals clipped to that lose nothing inside the box. H
+    // must hold every vertex q, which ghost points put outside `box`.
+    Aabb enclosing = box;
+    for (const DelaunayVertex& vertex : vertices) {
+        enclosing.min = glm::min(enclosing.min, vertex.position);
+        enclosing.max = glm::max(enclosing.max, vertex.position);
+    }
+    const BoundedVoronoi duals =
+        buildBoundedVoronoi(complex, scaledAboutCentre(enclosing, (2.0 - s) / s));
+
     const auto& edges = complex.edges();
     const auto& triangles = complex.triangles();
     const auto& tets = complex.tets();

@@ -12,6 +12,7 @@
 #include "skin/geometry/ComplexModel.hpp"
 #include "skin/geometry/MixedComplex.hpp"
 #include "skin/geometry/PowerComplex.hpp"
+#include "skin/geometry/SkinMesh.hpp"
 #include <nacre/assets/MaterialManager.hpp>
 #include <nacre/assets/MeshManager.hpp>
 #include "skin/geometry/WeightedPoint.hpp"
@@ -22,6 +23,7 @@ namespace skin::vis {
 namespace {
 
 constexpr float EDGE_THICKNESS = 0.02f;
+constexpr float POINT_MARKER_RADIUS = 0.1f;
 constexpr float HIGHLIGHT_THICKNESS = 0.04f;
 constexpr double MIN_EDGE_LENGTH = 1e-6; // skip coincident Voronoi vertices
 
@@ -29,6 +31,12 @@ const glm::vec4 WHITE{1.0f, 1.0f, 1.0f, 1.0f};
 const glm::vec4 VORONOI_COLOR{0.25f, 0.9f, 0.45f, 1.0f};
 const glm::vec4 CLIP_BOX_COLOR{0.6f, 0.6f, 0.75f, 1.0f};
 const glm::vec4 DISPLAY_BOX_COLOR{0.35f, 0.35f, 0.45f, 1.0f};
+const glm::vec3 SKIN_COLOR{0.85f, 0.8f, 0.75f};
+// By Delaunay simplex dimension, for mixed cells and the skin patches in them.
+const std::array<glm::vec3, 4> CELL_COLORS = {glm::vec3(0.35f, 0.55f, 0.95f),  // vertex
+                                              glm::vec3(0.35f, 0.8f, 0.45f),   // edge
+                                              glm::vec3(0.95f, 0.75f, 0.3f),   // triangle
+                                              glm::vec3(0.9f, 0.35f, 0.35f)};  // tet
 
 using PointKey = std::array<double, 3>;
 
@@ -132,12 +140,14 @@ ComplexVisualiser::ComplexVisualiser(nacre::ecs::ECS& ecs, nacre::assets::MeshMa
     : ecs(ecs),
       meshManager(meshManager),
       materialManager(materialManager),
+      complexModel(model),
       complex(model.complex()),
       skinVoronoi(model.skinVoronoi()),
       displayVoronoi(model.displayVoronoi()),
       points(model.points()) {}
 
 void ComplexVisualiser::rebuildAll(const UserSettings& settings) {
+    rebuildPointLayer(settings);
     rebuildWeightLayer(settings);
     rebuildDelaunayFaceLayer(settings);
     rebuildDelaunayEdgeLayer(settings);
@@ -147,12 +157,16 @@ void ComplexVisualiser::rebuildAll(const UserSettings& settings) {
     rebuildSelectedCellLayer(settings);
     rebuildMixedCellLayer(settings);
     rebuildClipBoxLayer(settings);
+    rebuildSkinLayer(settings);
 }
 
 void ComplexVisualiser::applySettings(const UserSettings& previous, const UserSettings& next) {
     // New paddings mean the owner has rebuilt both clipped diagrams.
     const bool reclipped = next.skinBoxPadding != previous.skinBoxPadding ||
                            next.displayBoxPadding != previous.displayBoxPadding;
+    if (next.showPoints != previous.showPoints) {
+        rebuildPointLayer(next);
+    }
     if (next.showWeights != previous.showWeights) {
         rebuildWeightLayer(next);
     }
@@ -191,6 +205,16 @@ void ComplexVisualiser::applySettings(const UserSettings& previous, const UserSe
     if (reclipped || next.showClipBox != previous.showClipBox) {
         rebuildClipBoxLayer(next);
     }
+    // A new skin mesh arrives later, through rebuildSkinLayer.
+    if (next.showSkin != previous.showSkin || next.skinColorByCell != previous.skinColorByCell) {
+        rebuildSkinLayer(next);
+    }
+}
+
+template <size_t N>
+bool ComplexVisualiser::touchesGhost(const std::array<uint32_t, N>& simplex) const {
+    return std::any_of(simplex.begin(), simplex.end(),
+                       [&](uint32_t v) { return complexModel.isGhost(v); });
 }
 
 void ComplexVisualiser::addLineEntity(EntityLayer& layer, const glm::vec3& start,
@@ -213,6 +237,16 @@ void ComplexVisualiser::addMeshEntity(EntityLayer& layer, const std::string& nam
     nacre::scene::ColorComponent colorComponent{.color = color};
     ecs.addComponent(entity, colorComponent);
     layer.add(entity);
+}
+
+void ComplexVisualiser::rebuildPointLayer(const UserSettings& settings) {
+    pointLayer.destroyAll(ecs, meshManager);
+    if (!settings.showPoints) {
+        return;
+    }
+    for (const auto& point : points) {
+        pointLayer.add(spawnPoint(ecs, point.position, POINT_MARKER_RADIUS));
+    }
 }
 
 void ComplexVisualiser::rebuildWeightLayer(const UserSettings& settings) {
@@ -239,6 +273,9 @@ void ComplexVisualiser::rebuildDelaunayFaceLayer(const UserSettings& settings) {
     nacre::assets::MeshData mesh{};
     std::vector<glm::dvec3> corners(3);
     for (const auto& triangle : complex.triangles()) {
+        if (touchesGhost(triangle.v)) {
+            continue;
+        }
         for (size_t k = 0; k < 3; ++k) {
             corners[k] = vertices[triangle.v[k]].position;
         }
@@ -260,6 +297,9 @@ void ComplexVisualiser::rebuildDelaunayEdgeLayer(const UserSettings& settings) {
     // No ColorComponent: default line gray.
     const auto& vertices = complex.vertices();
     for (const auto& edge : complex.edges()) {
+        if (touchesGhost(edge.v)) {
+            continue;
+        }
         delaunayEdgeLayer.add(spawnLine(ecs, toFloat(vertices[edge.v[0]].position),
                                         toFloat(vertices[edge.v[1]].position), EDGE_THICKNESS));
     }
@@ -293,6 +333,9 @@ void ComplexVisualiser::rebuildDelaunayTetLayer(const UserSettings& settings) {
     nacre::assets::MeshData mesh{};
     std::vector<glm::dvec3> triangle(3);
     for (uint32_t t = 0; t < tets.size(); ++t) {
+        if (touchesGhost(tets[t].v)) {
+            continue;
+        }
         std::array<glm::dvec3, 4> p;
         for (size_t i = 0; i < 4; ++i) {
             p[i] = vertices[tets[t].v[i]].position;
@@ -324,6 +367,9 @@ void ComplexVisualiser::rebuildVoronoiCellLayer(const UserSettings& settings) {
     nacre::assets::MeshData mesh{};
     std::vector<glm::dvec3> polygon;
     for (uint32_t i = 0; i < displayVoronoi.cells.size(); ++i) {
+        if (complexModel.isGhost(i)) {
+            continue;
+        }
         const geometry::ConvexPolytope& cell = displayVoronoi.cells[i];
         const glm::dvec3 centroid = cell.vertexMean();
         const glm::vec3 color = indexColor(i);
@@ -356,7 +402,7 @@ void ComplexVisualiser::rebuildSelectedCellLayer(const UserSettings& settings) {
     // directly so this also works below 3D.
     const glm::vec4 delaunayHighlight{0.4f, 0.85f, 1.0f, 1.0f};
     for (const auto& edge : complex.edges()) {
-        if (edge.v[0] == selected || edge.v[1] == selected) {
+        if ((edge.v[0] == selected || edge.v[1] == selected) && !touchesGhost(edge.v)) {
             addLineEntity(selectedCellLayer, toFloat(vertices[edge.v[0]].position),
                           toFloat(vertices[edge.v[1]].position), HIGHLIGHT_THICKNESS,
                           delaunayHighlight);
@@ -410,18 +456,12 @@ void ComplexVisualiser::rebuildMixedCellLayer(const UserSettings& settings) {
         return;
     }
 
-    const geometry::MixedComplex mixed =
-        geometry::buildMixedComplex(complex, skinVoronoi.box, settings.mixedS);
+    const geometry::MixedComplex& mixed = complexModel.mixedComplex();
     mixedCounts.clipped = mixed.clipped;
 
     const std::array<bool, 4> enabled = {settings.showMixedVertexCells, settings.showMixedEdgeCells,
                                          settings.showMixedTriangleCells,
                                          settings.showMixedTetCells};
-    const std::array<glm::vec3, 4> colors = {glm::vec3(0.35f, 0.55f, 0.95f),  // vertex
-                                             glm::vec3(0.35f, 0.8f, 0.45f),   // edge
-                                             glm::vec3(0.95f, 0.75f, 0.3f),   // triangle
-                                             glm::vec3(0.9f, 0.35f, 0.35f)};  // tet
-
     nacre::assets::MeshData mesh{};
     std::vector<glm::dvec3> polygon;
     for (const geometry::MixedCell& cell : mixed.cells) {
@@ -450,7 +490,7 @@ void ComplexVisualiser::rebuildMixedCellLayer(const UserSettings& settings) {
             for (const glm::dvec3& point : face) {
                 polygon.push_back(shrinkToward(point, centre, settings.mixedGap));
             }
-            appendPolygon(mesh, polygon, centre, colors[cell.dimension]);
+            appendPolygon(mesh, polygon, centre, CELL_COLORS[cell.dimension]);
         }
     }
 
@@ -485,6 +525,41 @@ void ComplexVisualiser::rebuildClipBoxLayer(const UserSettings& settings) {
     };
     addBox(skinVoronoi.box, CLIP_BOX_COLOR);
     addBox(displayVoronoi.box, DISPLAY_BOX_COLOR);
+}
+
+void ComplexVisualiser::rebuildSkinLayer(const UserSettings& settings) {
+    skinLayer.destroyAll(ecs, meshManager);
+    const geometry::SkinMesh& skin = complexModel.skin().mesh;
+    if (!settings.showSkin || skin.empty()) {
+        return;
+    }
+
+    // Coloured by cell: vertices duplicated per triangle so patches keep
+    // sharp borders. Normals stay the smooth grad F ones either way.
+    nacre::assets::MeshData mesh{};
+    const auto vertex = [&](uint32_t v, const glm::vec3& color) {
+        return nacre::assets::Vertex{.position = toFloat(skin.positions[v]),
+                                     .normal = toFloat(skin.normals[v]),
+                                     .color = color};
+    };
+    if (settings.skinColorByCell) {
+        for (size_t t = 0; t < skin.triangles.size(); ++t) {
+            const uint8_t dimension = skin.triangleDimension[t];
+            const glm::vec3 color = dimension < 4 ? CELL_COLORS[dimension] : SKIN_COLOR;
+            for (uint32_t v : skin.triangles[t]) {
+                mesh.indices.push_back(static_cast<uint32_t>(mesh.vertices.size()));
+                mesh.vertices.push_back(vertex(v, color));
+            }
+        }
+    } else {
+        for (uint32_t v = 0; v < skin.positions.size(); ++v) {
+            mesh.vertices.push_back(vertex(v, SKIN_COLOR));
+        }
+        for (const auto& triangle : skin.triangles) {
+            mesh.indices.insert(mesh.indices.end(), triangle.begin(), triangle.end());
+        }
+    }
+    addMeshEntity(skinLayer, "skin", mesh, WHITE);
 }
 
 } // namespace skin::vis

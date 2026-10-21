@@ -8,6 +8,7 @@
 #include <nacre/app/App.hpp>
 #include <nacre/core/Logger.hpp>
 #include <nacre/platform/InputBinding.hpp>
+#include "skin/BackgroundTask.hpp"
 #include "skin/geometry/ComplexModel.hpp"
 #include "skin/vis/DebugPanel.hpp"
 #include "skin/vis/UserSettings.hpp"
@@ -38,6 +39,10 @@ class SkinApp : public nacre::app::App {
     std::unique_ptr<vis::ComplexVisualiser> visualiser;
     vis::DebugPanel debugPanel;
 
+    // Copy the inputs they need, so they don't reference the model.
+    BackgroundTask<geometry::SkinBuild> skinTask;
+    BackgroundTask<std::optional<geometry::SkinComparison>> compareTask;
+
     // Declared last: unbinds before the members its callback uses are destroyed.
     nacre::platform::InputBinding pointInsertion;
 
@@ -46,6 +51,9 @@ class SkinApp : public nacre::app::App {
     void applyUserSettings(const vis::UserSettings& settings);
     void loadWeightedPoints();
     void produceTriangularisation();
+    void rebuildSkin(); // starts a job, or clears the skin when hidden
+    void startComparison();
+    void collectMeshingResults();
 
     void bindPointInsertion();
 };

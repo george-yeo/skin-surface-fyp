@@ -1,6 +1,7 @@
 #include "skin/SkinApp.hpp"
 
 #include <algorithm>
+#include <memory>
 
 #include <GLFW/glfw3.h>
 #include <imgui/imgui.h>
@@ -8,7 +9,6 @@
 #include "skin/CameraController.hpp"
 #include "skin/geometry/WeightedPoint.hpp"
 #include "skin/vis/ComplexVisualiser.hpp"
-#include "skin/vis/Spawn.hpp"
 #include <nacre/assets/MaterialManager.hpp>
 #include <nacre/platform/GlfwWindow.hpp>
 #include <nacre/platform/InputManager.hpp>
@@ -42,34 +42,62 @@ void SkinApp::onUpdate(double /*dt*/) {
         applyUserSettings(*pendingSettings);
         pendingSettings.reset();
     }
+    if (debugPanel.takeCompareRequest()) {
+        startComparison();
+    }
+    collectMeshingResults();
+}
+
+void SkinApp::collectMeshingResults() {
+    if (auto build = skinTask.poll()) {
+        model.setSkin(std::move(*build));
+        visualiser->rebuildSkinLayer(userSettings);
+    }
+    if (auto comparison = compareTask.poll(); comparison && *comparison) {
+        model.setComparison(**comparison);
+    }
 }
 
 void SkinApp::applyUserSettings(const vis::UserSettings& settings) {
     const vis::UserSettings previous = userSettings;
     userSettings = settings;
 
-    if (settings.skinBoxPadding != previous.skinBoxPadding ||
-        settings.displayBoxPadding != previous.displayBoxPadding) {
-        model.rebuildClipping(settings.skinBoxPadding, settings.displayBoxPadding);
+    if (settings.inputFile != previous.inputFile) {
+        loadWeightedPoints();
+        produceTriangularisation(); // rebuilds every layer from userSettings
+    } else {
+        bool remixed = true;
+        if (settings.skinBoxPadding != previous.skinBoxPadding ||
+            settings.displayBoxPadding != previous.displayBoxPadding) {
+            model.rebuildClipping(settings.skinBoxPadding, settings.displayBoxPadding,
+                                  settings.mixedS);
+        } else if (settings.mixedS != previous.mixedS) {
+            model.rebuildMixed(settings.mixedS);
+        } else {
+            remixed = false;
+        }
+        if (remixed) {
+            compareTask.cancel(); // its mixed complex is gone
+        }
+        if (remixed || settings.showSkin != previous.showSkin ||
+            settings.skinMesher != previous.skinMesher ||
+            settings.skinRefineK != previous.skinRefineK ||
+            settings.skinCgalSubdivisions != previous.skinCgalSubdivisions) {
+            rebuildSkin();
+        }
+        visualiser->applySettings(previous, settings);
     }
-    visualiser->applySettings(previous, settings);
     if (settings.wireframe != previous.wireframe) {
         getMaterialManager().setWireframe(settings.wireframe);
     }
 }
 
 void SkinApp::loadWeightedPoints() {
-    // Load weighted points from a JSON file
     try {
-        model.load("assets/test/points_simple.json");
+        model.load(userSettings.inputFile);
     } catch (const std::exception& e) {
         logger.error("Failed to load weighted points: {}", e.what());
         return;
-    }
-
-    // Create entities for each weighted point
-    for (const auto& point : model.points()) {
-        vis::spawnPoint(getEcs(), point.position, 0.1f);
     }
 
     logger.print("Loaded {} weighted points", model.points().size());
@@ -85,7 +113,10 @@ void SkinApp::produceTriangularisation() {
         selectedInput = before[static_cast<size_t>(userSettings.selectedVertex)].inputIndex;
     }
 
-    model.rebuild(userSettings.skinBoxPadding, userSettings.displayBoxPadding);
+    model.rebuild(userSettings.skinBoxPadding, userSettings.displayBoxPadding,
+                  userSettings.mixedS);
+    compareTask.cancel();
+    rebuildSkin();
 
     if (selectedInput) {
         const auto& after = model.complex().vertices();
@@ -100,8 +131,37 @@ void SkinApp::produceTriangularisation() {
     visualiser->rebuildAll(userSettings);
 }
 
+void SkinApp::rebuildSkin() {
+    if (!userSettings.showSkin) {
+        skinTask.cancel();
+        model.clearSkin();
+        return;
+    }
+    // The old skin stays drawn until the new one arrives.
+    const auto inputs = std::make_shared<const geometry::SkinInputs>(model.skinInputs());
+    const geometry::SkinRequest request{.mesher = userSettings.skinMesher,
+                                        .s = userSettings.mixedS,
+                                        .k = userSettings.skinRefineK,
+                                        .subdivisions = userSettings.skinCgalSubdivisions};
+    skinTask.start([inputs, request](geometry::MeshingControl& control) {
+        return geometry::buildSkin(*inputs, request, control);
+    });
+}
+
+void SkinApp::startComparison() {
+    const auto inputs = std::make_shared<const geometry::SkinInputs>(model.skinInputs());
+    const geometry::SkinRequest request{.mesher = userSettings.skinMesher,
+                                        .s = userSettings.mixedS,
+                                        .k = userSettings.skinRefineK,
+                                        .subdivisions = userSettings.skinCgalSubdivisions};
+    compareTask.start([inputs, request](geometry::MeshingControl& control) {
+        return geometry::compareSkinMeshes(*inputs, request, control);
+    });
+}
+
 void SkinApp::onUi() {
-    if (auto edited = debugPanel.draw(userSettings, model, visualiser->mixedCellCounts())) {
+    if (auto edited = debugPanel.draw(userSettings, model, visualiser->mixedCellCounts(),
+                                      skinTask.status(), compareTask.status())) {
         pendingSettings = *edited;
     }
 }
@@ -143,10 +203,7 @@ void SkinApp::bindPointInsertion() {
 
         geometry::WeightedPoint weightedPoint(pos, 1.0f);
         model.addPoint(weightedPoint);
-
-        vis::spawnPoint(getEcs(), weightedPoint.position, 0.1f);
-
-        produceTriangularisation();
+        produceTriangularisation(); // rebuilds every layer, the point markers included
     });
 }
 

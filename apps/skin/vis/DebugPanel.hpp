@@ -1,6 +1,7 @@
 #pragma once
 
 #include <optional>
+#include <utility>
 
 #include "skin/geometry/fwd.hpp"
 #include "skin/vis/UserSettings.hpp"
@@ -14,7 +15,12 @@ class DebugPanel {
     // Returns the edited settings if anything changed this frame.
     std::optional<UserSettings> draw(const UserSettings& current,
                                      const geometry::ComplexModel& model,
-                                     const MixedCellCounts& mixedCounts);
+                                     const MixedCellCounts& mixedCounts,
+                                     const geometry::MeshingStatus& skinStatus,
+                                     const geometry::MeshingStatus& compareStatus);
+
+    // True once per click of "Compare with CGAL".
+    bool takeCompareRequest() { return std::exchange(compareRequested, false); }
 
     private:
     // Slider values while dragging; only committed to UserSettings on release
@@ -28,8 +34,12 @@ class DebugPanel {
     float cellAlphaDraft = 1.0f;
     float selectedCellAlphaDraft = 1.0f;
     float mixedAlphaDraft = 1.0f;
+    float skinSDraft = 0.5f; // its own draft: a shared one is reset by the inactive slider
+    float skinRefineKDraft = 1.0f;
     float skinBoxPaddingDraft = 0.5f;
     float displayBoxPaddingDraft = 1.0f;
+
+    bool compareRequested = false;
 };
 
 } // namespace skin::vis

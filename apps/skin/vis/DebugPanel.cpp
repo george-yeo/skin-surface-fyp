@@ -3,20 +3,55 @@
 #include <imgui/imgui.h>
 
 #include <algorithm>
+#include <filesystem>
+#include <format>
+#include <string>
+#include <system_error>
+#include <vector>
 
 #include "skin/geometry/BoundedVoronoi.hpp"
 #include "skin/geometry/ComplexModel.hpp"
 #include "skin/geometry/PowerComplex.hpp"
+#include "skin/geometry/SkinBuild.hpp"
+#include "skin/geometry/SkinMesh.hpp"
 #include "skin/vis/ComplexVisualiser.hpp"
 
 namespace skin::vis {
 
 namespace {
 
-void drawPowerComplexStats(const geometry::PowerComplex& complex, const geometry::Aabb& skinBox,
-                           const geometry::Aabb& displayBox) {
-    ImGui::Text("Dimension %d, %zu hidden inputs", complex.dimension(),
-                complex.hiddenInputs().size());
+constexpr const char* INPUT_DIRECTORY = "assets/test";
+
+// Sorted *.json paths under INPUT_DIRECTORY; empty if it can't be read.
+std::vector<std::string> listInputFiles() {
+    std::vector<std::string> files;
+    std::error_code error;
+    for (const auto& entry : std::filesystem::directory_iterator(INPUT_DIRECTORY, error)) {
+        if (entry.is_regular_file(error) && entry.path().extension() == ".json") {
+            files.push_back(entry.path().generic_string());
+        }
+    }
+    std::sort(files.begin(), files.end());
+    return files;
+}
+
+void drawInputSelector(UserSettings& settings) {
+    if (ImGui::BeginCombo("Input", settings.inputFile.c_str())) {
+        for (const std::string& file : listInputFiles()) {
+            if (ImGui::Selectable(file.c_str(), file == settings.inputFile)) {
+                settings.inputFile = file;
+            }
+        }
+        ImGui::EndCombo();
+    }
+}
+
+void drawPowerComplexStats(const geometry::ComplexModel& model) {
+    const geometry::PowerComplex& complex = model.complex();
+    const geometry::Aabb& skinBox = model.skinVoronoi().box;
+    const geometry::Aabb& displayBox = model.displayVoronoi().box;
+    ImGui::Text("Dimension %d, %zu hidden inputs, %u ghosts", complex.dimension(),
+                complex.hiddenInputs().size(), model.ghostCount());
     ImGui::Text("Delaunay: %zu V, %zu E, %zu F, %zu T", complex.vertices().size(),
                 complex.edges().size(), complex.triangles().size(), complex.tets().size());
 
@@ -81,11 +116,88 @@ void drawMixedCellStats(const MixedCellCounts& counts) {
                 counts.clipped[2], counts.clipped[3]);
 }
 
+void drawSkinStats(const geometry::SkinBuild& skin) {
+    const geometry::SkinMeshStats& stats = skin.stats;
+    ImGui::Text("%zu V, %zu E, %zu F (%.1f ms)", stats.vertices, stats.edges, stats.triangles,
+                skin.milliseconds);
+    std::string chi;
+    for (const int64_t value : stats.eulerCharacteristics) {
+        chi += (chi.empty() ? "" : ", ") + std::to_string(value);
+    }
+    ImGui::Text("%zu components, chi: %s", stats.eulerCharacteristics.size(), chi.c_str());
+    if (stats.nonManifoldEdges > 0) {
+        ImGui::TextColored({1.0f, 0.4f, 0.3f, 1.0f}, "%zu non-manifold edges",
+                           stats.nonManifoldEdges);
+    } else if (stats.triangles > 0) {
+        ImGui::Text("Watertight");
+    }
+    if (skin.mesher == geometry::SkinMesher::MarchingTets) {
+        ImGui::Text("%zu tets%s", skin.tets, skin.budgetExceeded ? " (budget hit)" : "");
+    }
+    if (skin.mesher == geometry::SkinMesher::KruithofVegter && stats.triangles > 0) {
+        if (skin.monotonicityViolations == 0) {
+            ImGui::Text("%zu tets; Condition 17 holds (isotopic)", skin.tets);
+        } else {
+            ImGui::TextColored({1.0f, 0.4f, 0.3f, 1.0f}, "%zu tets; %zu Condition 17 violations",
+                               skin.tets, skin.monotonicityViolations);
+        }
+    }
+}
+
+void drawSkinComparison(const geometry::SkinComparison& comparison) {
+    ImGui::Text("Ours %zu V / %zu F, CGAL %zu V / %zu F", comparison.oursVertices,
+                comparison.oursTriangles, comparison.cgalVertices, comparison.cgalTriangles);
+    ImGui::Text("%zu / %zu CGAL vertices located", comparison.located,
+                comparison.cgalVertices);
+    ImGui::Text("|F| / |grad F|: max %.2e, mean %.2e", comparison.maxResidual,
+                comparison.meanResidual);
+    ImGui::Text("CGAL -> ours: max %.2e, mean %.2e", comparison.maxCgalToOurs,
+                comparison.meanCgalToOurs);
+    ImGui::Text("Ours -> CGAL: max %.2e, mean %.2e", comparison.maxOursToCgal,
+                comparison.meanOursToCgal);
+}
+
+const char* phaseName(geometry::MeshingPhase phase) {
+    switch (phase) {
+    case geometry::MeshingPhase::Starting:
+        return "Starting";
+    case geometry::MeshingPhase::Refining:
+        return "Refining";
+    case geometry::MeshingPhase::Triangulating:
+        return "Triangulating the mixed complex";
+    case geometry::MeshingPhase::Marching:
+        return "Marching";
+    case geometry::MeshingPhase::Cgal:
+        return "CGAL meshing";
+    case geometry::MeshingPhase::Comparing:
+        return "Comparing";
+    case geometry::MeshingPhase::Statistics:
+        return "Checking mesh";
+    }
+    return "";
+}
+
+// A line of text and a bar; indeterminate while the phase's total is unknown.
+void drawMeshingStatus(const geometry::MeshingStatus& status) {
+    std::string text = std::format("{}... {:.1f} s", phaseName(status.phase), status.seconds);
+    if (status.tets > 0) {
+        text += std::format(", {}k tets", status.tets / 1000);
+    }
+    ImGui::TextUnformatted(text.c_str());
+    // ImGui animates a negative fraction as an indeterminate bar; it must
+    // change with time.
+    const bool known = status.fraction >= 0.0f;
+    ImGui::ProgressBar(known ? status.fraction : -static_cast<float>(ImGui::GetTime()),
+                       ImVec2(-FLT_MIN, 0.0f), known ? nullptr : "");
+}
+
 } // namespace
 
 std::optional<UserSettings> DebugPanel::draw(const UserSettings& current,
                                              const geometry::ComplexModel& model,
-                                             const MixedCellCounts& mixedCounts) {
+                                             const MixedCellCounts& mixedCounts,
+                                             const geometry::MeshingStatus& skinStatus,
+                                             const geometry::MeshingStatus& compareStatus) {
     UserSettings settings = current;
     ImGui::Begin("Settings");
 
@@ -93,7 +205,11 @@ std::optional<UserSettings> DebugPanel::draw(const UserSettings& current,
     const float framerate = ImGui::GetIO().Framerate;
     ImGui::Text("%.1f FPS (%.2f ms)", framerate, framerate > 0.0f ? 1000.0f / framerate : 0.0f);
 
+    drawInputSelector(settings);
+
     ImGui::SeparatorText("Layers");
+    ImGui::Checkbox("Points", &settings.showPoints);
+    ImGui::SameLine();
     ImGui::Checkbox("Weights", &settings.showWeights);
     ImGui::Checkbox("Delaunay faces", &settings.showDelaunayFaces);
     if (settings.showDelaunayFaces) {
@@ -131,6 +247,44 @@ std::optional<UserSettings> DebugPanel::draw(const UserSettings& current,
         commitOnReleaseSlider("Alpha##selected", selectedCellAlphaDraft,
                               settings.selectedCellAlpha, 0.05f, 1.0f);
     }
+    ImGui::Checkbox("Skin", &settings.showSkin);
+    if (settings.showSkin) {
+        // Same order as geometry::SkinMesher.
+        const char* meshers[] = {"Generic marching tets", "CGAL", "Kruithof-Vegter"};
+        int mesher = static_cast<int>(settings.skinMesher);
+        if (ImGui::Combo("Mesher", &mesher, meshers, IM_ARRAYSIZE(meshers))) {
+            settings.skinMesher = static_cast<geometry::SkinMesher>(mesher);
+        }
+        commitOnReleaseSlider("s##skin", skinSDraft, settings.mixedS, 0.01f, 0.99f);
+        if (settings.skinMesher == geometry::SkinMesher::MarchingTets) {
+            commitOnReleaseSlider("k (edge / patch radius)", skinRefineKDraft,
+                                  settings.skinRefineK, 0.25f, 2.0f);
+        }
+        if (settings.skinMesher == geometry::SkinMesher::Cgal) {
+            ImGui::SliderInt("Subdivisions", &settings.skinCgalSubdivisions, 0, 3, "%d",
+                             ImGuiSliderFlags_AlwaysClamp);
+        } else {
+            ImGui::Checkbox("Colour by cell type", &settings.skinColorByCell);
+        }
+        if (skinStatus.busy) {
+            drawMeshingStatus(skinStatus);
+            if (!model.skin().mesh.empty()) {
+                ImGui::TextDisabled("Showing the previous mesh");
+            }
+        }
+        drawSkinStats(model.skin());
+
+        ImGui::BeginDisabled(compareStatus.busy);
+        if (ImGui::Button("Compare with CGAL")) {
+            compareRequested = true;
+        }
+        ImGui::EndDisabled();
+        if (compareStatus.busy) {
+            drawMeshingStatus(compareStatus);
+        } else if (const auto& comparison = model.skinComparison()) {
+            drawSkinComparison(*comparison);
+        }
+    }
     ImGui::Checkbox("Clip box", &settings.showClipBox);
     commitOnReleaseSlider("Skin box padding", skinBoxPaddingDraft, settings.skinBoxPadding, 0.0f,
                           2.0f);
@@ -138,8 +292,7 @@ std::optional<UserSettings> DebugPanel::draw(const UserSettings& current,
                           settings.displayBoxPadding, 0.0f, 3.0f);
 
     ImGui::SeparatorText("Power complex");
-    drawPowerComplexStats(model.complex(), model.skinVoronoi().box,
-                          model.displayVoronoi().box);
+    drawPowerComplexStats(model);
 
     ImGui::End();
 
