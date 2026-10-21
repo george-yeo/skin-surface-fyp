@@ -12,7 +12,7 @@ namespace skin::geometry {
 
 inline constexpr uint8_t kNoDimension = UINT8_MAX;
 
-enum class SkinMesher : uint8_t { MarchingTets, Cgal, KruithofVegter };
+enum class SkinMesher : uint8_t { Cgal, KruithofVegter };
 
 // An indexed triangle mesh of the skin. Triangles are counter-clockwise about
 // the outward normal. Per-triangle provenance is kept for the mixed complex

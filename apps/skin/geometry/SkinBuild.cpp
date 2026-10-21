@@ -5,7 +5,6 @@
 #include <utility>
 
 #include "skin/geometry/KruithofVegter.hpp"
-#include "skin/geometry/MarchingTets.hpp"
 #include <nacre/core/Logger.hpp>
 
 namespace skin::geometry {
@@ -14,8 +13,6 @@ namespace {
 
 const char* mesherName(SkinMesher mesher) {
     switch (mesher) {
-    case SkinMesher::MarchingTets:
-        return "Generic marching tets";
     case SkinMesher::Cgal:
         return "CGAL";
     case SkinMesher::KruithofVegter:
@@ -30,14 +27,7 @@ SkinBuild buildSkin(const SkinInputs& inputs, const SkinRequest& request, Meshin
     const auto start = std::chrono::steady_clock::now();
     SkinBuild build;
     build.mesher = request.mesher;
-    if (request.mesher == SkinMesher::MarchingTets) {
-        MarchingTetsResult result =
-            marchTets(inputs.mixed, inputs.topology, inputs.quadrics, request.k, &control);
-        build.mesh = std::move(result.mesh);
-        build.tets = result.tets;
-        build.budgetExceeded = result.budgetExceeded;
-        build.cancelled = result.cancelled;
-    } else if (request.mesher == SkinMesher::KruithofVegter) {
+    if (request.mesher == SkinMesher::KruithofVegter) {
         KvSkinResult result =
             meshSkinKruithofVegter(inputs.points, request.s, request.refinements, &control);
         build.mesh = std::move(result.mesh);
@@ -77,9 +67,6 @@ SkinBuild buildSkin(const SkinInputs& inputs, const SkinRequest& request, Meshin
     if (build.monotonicityViolations > 0) {
         logger.warn("Kruithof-Vegter: {} edges violate Condition 17", build.monotonicityViolations);
     }
-    if (build.budgetExceeded) {
-        logger.warn("Refinement stopped at the tet budget; the mesh is coarser than k asks");
-    }
     if (stats.nonManifoldEdges > 0) {
         logger.warn("Skin mesh is not watertight");
     }
@@ -89,20 +76,9 @@ SkinBuild buildSkin(const SkinInputs& inputs, const SkinRequest& request, Meshin
 std::optional<SkinComparison> compareSkinMeshes(const SkinInputs& inputs,
                                                 const SkinRequest& request,
                                                 MeshingControl& control) {
-    SkinMesh ours;
-    bool cancelled = false;
-    if (request.mesher == SkinMesher::MarchingTets) {
-        MarchingTetsResult result =
-            marchTets(inputs.mixed, inputs.topology, inputs.quadrics, request.k, &control);
-        ours = std::move(result.mesh);
-        cancelled = result.cancelled;
-    } else {
-        KvSkinResult result =
-            meshSkinKruithofVegter(inputs.points, request.s, request.refinements, &control);
-        ours = std::move(result.mesh);
-        cancelled = result.cancelled;
-    }
-    if (cancelled || control.stopRequested()) {
+    KvSkinResult ours =
+        meshSkinKruithofVegter(inputs.points, request.s, request.refinements, &control);
+    if (ours.cancelled || control.stopRequested()) {
         return std::nullopt;
     }
     control.phase = MeshingPhase::Cgal;
@@ -113,13 +89,12 @@ std::optional<SkinComparison> compareSkinMeshes(const SkinInputs& inputs,
     }
     control.phase = MeshingPhase::Comparing;
     const SkinComparison comparison =
-        compareSkins(ours, cgal, inputs.topology, inputs.quadrics);
+        compareSkins(ours.mesh, cgal, inputs.topology, inputs.quadrics);
 
     const nacre::core::Logger logger{"Skin"};
-    logger.print("Compare ({} vs CGAL): ours {} V / {} F, CGAL {} V / {} F; {} / {} CGAL "
-                 "vertices located; |F|/|grad F| max {:.3e}, mean {:.3e}; CGAL -> ours max "
-                 "{:.3e}, mean {:.3e}; ours -> CGAL max {:.3e}, mean {:.3e}",
-                 request.mesher == SkinMesher::MarchingTets ? "generic" : "Kruithof-Vegter",
+    logger.print("Compare (Kruithof-Vegter vs CGAL): ours {} V / {} F, CGAL {} V / {} F; {} / "
+                 "{} CGAL vertices located; |F|/|grad F| max {:.3e}, mean {:.3e}; CGAL -> ours "
+                 "max {:.3e}, mean {:.3e}; ours -> CGAL max {:.3e}, mean {:.3e}",
                  comparison.oursVertices, comparison.oursTriangles, comparison.cgalVertices,
                  comparison.cgalTriangles, comparison.located, comparison.cgalVertices,
                  comparison.maxResidual,

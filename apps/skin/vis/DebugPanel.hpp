@@ -35,9 +35,10 @@ class DebugPanel {
     float selectedCellAlphaDraft = 1.0f;
     float mixedAlphaDraft = 1.0f;
     float skinSDraft = 0.5f; // its own draft: a shared one is reset by the inactive slider
-    float skinRefineKDraft = 1.0f;
     float skinBoxPaddingDraft = 0.5f;
     float displayBoxPaddingDraft = 1.0f;
+    int skinCgalSubdivisionsDraft = 1;
+    int skinKvRefinementsDraft = 0;
 
     bool compareRequested = false;
 };

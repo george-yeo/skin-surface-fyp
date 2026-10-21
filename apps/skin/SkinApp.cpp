@@ -81,7 +81,6 @@ void SkinApp::applyUserSettings(const vis::UserSettings& settings) {
         }
         if (remixed || settings.showSkin != previous.showSkin ||
             settings.skinMesher != previous.skinMesher ||
-            settings.skinRefineK != previous.skinRefineK ||
             settings.skinCgalSubdivisions != previous.skinCgalSubdivisions ||
             settings.skinKvRefinements != previous.skinKvRefinements) {
             rebuildSkin();
@@ -142,7 +141,6 @@ void SkinApp::rebuildSkin() {
     const auto inputs = std::make_shared<const geometry::SkinInputs>(model.skinInputs());
     const geometry::SkinRequest request{.mesher = userSettings.skinMesher,
                                         .s = userSettings.mixedS,
-                                        .k = userSettings.skinRefineK,
                                         .subdivisions = userSettings.skinCgalSubdivisions,
                                         .refinements = userSettings.skinKvRefinements};
     skinTask.start([inputs, request](geometry::MeshingControl& control) {
@@ -154,7 +152,6 @@ void SkinApp::startComparison() {
     const auto inputs = std::make_shared<const geometry::SkinInputs>(model.skinInputs());
     const geometry::SkinRequest request{.mesher = userSettings.skinMesher,
                                         .s = userSettings.mixedS,
-                                        .k = userSettings.skinRefineK,
                                         .subdivisions = userSettings.skinCgalSubdivisions,
                                         .refinements = userSettings.skinKvRefinements};
     compareTask.start([inputs, request](geometry::MeshingControl& control) {

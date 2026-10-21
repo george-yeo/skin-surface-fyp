@@ -20,7 +20,6 @@ struct SkinQuadric {
     glm::dmat3 form;      // A
     glm::dmat3 projector; // P
     double formNorm;      // spectral norm of A
-    double scale;      // patch radius: sqrt(s |w_X|), or sqrt((1 - s) |w_X|) for tets
 
     double value(const glm::dvec3& x) const {
         const glm::dvec3 d = x - centre;

@@ -62,10 +62,6 @@ molecular skin surfaces.* Proc. IEEE Visualization (VIS '04), 481–488, 2004.
 - **Unverified:** publisher and year from memory.
 - Used by: `closestOnTriangle` in `KruithofVegter.cpp`.
 
-**[Riv]** M.-C. Rivara, longest-edge bisection of simplicial meshes.
-- **Unverified:** no specific paper checked yet.
-- Used by: `MarchingTets.cpp` (Phase A generic mesher's refinement).
-
 ## Software
 
 **[CGAL]** The CGAL Project. *CGAL, Computational Geometry Algorithms

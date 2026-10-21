@@ -93,14 +93,12 @@ SkinQuadric makeSkinQuadric(const PowerComplex& complex, uint32_t dimension, uin
     if (dimension > 0) {
         formNorm = std::max(formNorm, 1.0 / (1.0 - s));
     }
-    const double scale = std::sqrt((dimension == 3 ? 1.0 - s : s) * std::abs(weight));
 
     return {.centre = centre,
             .weight = weight,
             .form = (identity - projector) / s - projector / (1.0 - s),
             .projector = projector,
-            .formNorm = formNorm,
-            .scale = scale};
+            .formNorm = formNorm};
 }
 
 std::vector<SkinQuadric> buildSkinQuadrics(const PowerComplex& complex, const MixedComplex& mixed,

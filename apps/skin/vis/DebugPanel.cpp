@@ -109,6 +109,15 @@ void commitOnReleaseSlider(const char* label, float& draft, float& committed, fl
     }
 }
 
+void commitOnReleaseSlider(const char* label, int& draft, int& committed, int min, int max) {
+    ImGui::SliderInt(label, &draft, min, max, "%d", ImGuiSliderFlags_AlwaysClamp);
+    if (ImGui::IsItemDeactivatedAfterEdit()) {
+        committed = draft;
+    } else if (!ImGui::IsItemActive()) {
+        draft = committed;
+    }
+}
+
 void drawMixedCellStats(const MixedCellCounts& counts) {
     ImGui::Text("Built: %u V, %u E, %u F, %u T", counts.built[0], counts.built[1],
                 counts.built[2], counts.built[3]);
@@ -130,9 +139,6 @@ void drawSkinStats(const geometry::SkinBuild& skin) {
                            stats.nonManifoldEdges);
     } else if (stats.triangles > 0) {
         ImGui::Text("Watertight");
-    }
-    if (skin.mesher == geometry::SkinMesher::MarchingTets) {
-        ImGui::Text("%zu tets%s", skin.tets, skin.budgetExceeded ? " (budget hit)" : "");
     }
     if (skin.mesher == geometry::SkinMesher::KruithofVegter && stats.triangles > 0) {
         if (skin.monotonicityViolations == 0) {
@@ -254,23 +260,19 @@ std::optional<UserSettings> DebugPanel::draw(const UserSettings& current,
     ImGui::Checkbox("Skin", &settings.showSkin);
     if (settings.showSkin) {
         // Same order as geometry::SkinMesher.
-        const char* meshers[] = {"Generic marching tets", "CGAL", "Kruithof-Vegter"};
+        const char* meshers[] = {"CGAL", "Kruithof-Vegter"};
         int mesher = static_cast<int>(settings.skinMesher);
         if (ImGui::Combo("Mesher", &mesher, meshers, IM_ARRAYSIZE(meshers))) {
             settings.skinMesher = static_cast<geometry::SkinMesher>(mesher);
         }
         commitOnReleaseSlider("s##skin", skinSDraft, settings.mixedS, 0.01f, 0.99f);
-        if (settings.skinMesher == geometry::SkinMesher::MarchingTets) {
-            commitOnReleaseSlider("k (edge / patch radius)", skinRefineKDraft,
-                                  settings.skinRefineK, 0.25f, 2.0f);
-        }
         if (settings.skinMesher == geometry::SkinMesher::KruithofVegter) {
-            ImGui::SliderInt("Refinement rounds (1-to-9)", &settings.skinKvRefinements, 0, 3,
-                             "%d", ImGuiSliderFlags_AlwaysClamp);
+            commitOnReleaseSlider("Refinement rounds (1-to-9)", skinKvRefinementsDraft,
+                                  settings.skinKvRefinements, 0, 3);
         }
         if (settings.skinMesher == geometry::SkinMesher::Cgal) {
-            ImGui::SliderInt("Subdivisions", &settings.skinCgalSubdivisions, 0, 3, "%d",
-                             ImGuiSliderFlags_AlwaysClamp);
+            commitOnReleaseSlider("Subdivisions", skinCgalSubdivisionsDraft,
+                                  settings.skinCgalSubdivisions, 0, 3);
         } else {
             ImGui::Checkbox("Colour by cell type", &settings.skinColorByCell);
         }
