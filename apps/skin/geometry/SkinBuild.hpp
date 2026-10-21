@@ -59,6 +59,7 @@ struct SkinRequest {
     double s = 0.5;
     double k = 1.0;       // marching tets refinement constant
     int subdivisions = 0; // CGAL subdivision rounds
+    int refinements = 0;  // Kruithof-Vegter 1-to-9 rounds
 };
 
 struct SkinBuild {
@@ -67,6 +68,7 @@ struct SkinBuild {
     SkinMesher mesher = SkinMesher::KruithofVegter;
     size_t tets = 0;                   // marching tets / KV: tets marched
     size_t monotonicityViolations = 0; // KV: Condition 17 failures (0 = isotopy holds)
+    size_t isotopyTestFailures = 0;    // KV: triangles failing Lemma 23 (sufficient test)
     bool budgetExceeded = false;
     bool cancelled = false; // stopped early; the mesh is incomplete
     double milliseconds = 0.0;

@@ -18,8 +18,8 @@ uint64_t edgeKey(uint32_t a, uint32_t b) {
     return (static_cast<uint64_t>(a) << 32) | b;
 }
 
-// The root of F along a -> b, as t in [0, 1]. F is quadratic along the line:
-// alpha t^2 + 2 beta t + gamma.
+} // namespace
+
 double crossingParameter(const SkinQuadric& q, const glm::dvec3& a, const glm::dvec3& b,
                          double fa, double fb) {
     const glm::dvec3 e = b - a;
@@ -72,8 +72,6 @@ double crossingParameter(const SkinQuadric& q, const glm::dvec3& a, const glm::d
     }
     return 0.5 * (lo + hi);
 }
-
-} // namespace
 
 TetMarcher::TetMarcher(const std::vector<glm::dvec3>& points, std::vector<double>& values,
                        const std::vector<SkinQuadric>& quadrics,
@@ -161,20 +159,7 @@ void TetMarcher::march(const std::array<uint32_t, 4>& tet, uint32_t cell) {
 }
 
 SkinMesh TetMarcher::finish() {
-    std::vector<glm::dvec3> accumulated(mesh.positions.size(), glm::dvec3(0.0));
-    for (const auto& [a, b, c] : mesh.triangles) {
-        const glm::dvec3 n =
-            glm::cross(mesh.positions[b] - mesh.positions[a], mesh.positions[c] - mesh.positions[a]);
-        accumulated[a] += n;
-        accumulated[b] += n;
-        accumulated[c] += n;
-    }
-    for (size_t v = 0; v < mesh.normals.size(); ++v) {
-        const double length = glm::length(accumulated[v]);
-        if (mesh.normals[v] == glm::dvec3(0.0) && length > 0.0) {
-            mesh.normals[v] = accumulated[v] / length;
-        }
-    }
+    fillMissingNormals(mesh);
     return std::move(mesh);
 }
 

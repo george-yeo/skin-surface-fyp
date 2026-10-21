@@ -69,13 +69,15 @@ struct KvSkinResult {
     SkinMesh mesh; // triangleCell indexes the complex's cells
     size_t tets = 0;
     size_t monotonicityViolations = 0;
+    size_t isotopyTestFailures = 0; // triangles failing [KV07, Lemma 23]
     bool cancelled = false;
 };
 
-// The coarse Kruithof-Vegter mesh: marching tets on buildKvTetComplex. It is
-// isotopic to the skin when Condition 17 holds on every edge [KV07, Thm 21].
+// The Kruithof-Vegter mesh: marching tets on buildKvTetComplex, isotopic to
+// the skin when Condition 17 holds on every edge [KV07, Thm 21], then
+// `refinements` 1-to-9 rounds (refineKvMesh). Logs the Lemma 23 isotopy test.
 // With a control, reports progress and stops early when asked.
 KvSkinResult meshSkinKruithofVegter(std::span<const WeightedPoint> points, double s,
-                                    MeshingControl* control = nullptr);
+                                    int refinements = 0, MeshingControl* control = nullptr);
 
 } // namespace skin::geometry

@@ -141,6 +141,10 @@ void drawSkinStats(const geometry::SkinBuild& skin) {
             ImGui::TextColored({1.0f, 0.4f, 0.3f, 1.0f}, "%zu tets; %zu Condition 17 violations",
                                skin.tets, skin.monotonicityViolations);
         }
+        if (skin.isotopyTestFailures > 0) {
+            ImGui::TextColored({1.0f, 0.8f, 0.3f, 1.0f}, "%zu / %zu triangles fail Lemma 23",
+                               skin.isotopyTestFailures, stats.triangles);
+        }
     }
 }
 
@@ -259,6 +263,10 @@ std::optional<UserSettings> DebugPanel::draw(const UserSettings& current,
         if (settings.skinMesher == geometry::SkinMesher::MarchingTets) {
             commitOnReleaseSlider("k (edge / patch radius)", skinRefineKDraft,
                                   settings.skinRefineK, 0.25f, 2.0f);
+        }
+        if (settings.skinMesher == geometry::SkinMesher::KruithofVegter) {
+            ImGui::SliderInt("Refinement rounds (1-to-9)", &settings.skinKvRefinements, 0, 3,
+                             "%d", ImGuiSliderFlags_AlwaysClamp);
         }
         if (settings.skinMesher == geometry::SkinMesher::Cgal) {
             ImGui::SliderInt("Subdivisions", &settings.skinCgalSubdivisions, 0, 3, "%d",

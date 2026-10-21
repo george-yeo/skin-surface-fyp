@@ -38,10 +38,12 @@ SkinBuild buildSkin(const SkinInputs& inputs, const SkinRequest& request, Meshin
         build.budgetExceeded = result.budgetExceeded;
         build.cancelled = result.cancelled;
     } else if (request.mesher == SkinMesher::KruithofVegter) {
-        KvSkinResult result = meshSkinKruithofVegter(inputs.points, request.s, &control);
+        KvSkinResult result =
+            meshSkinKruithofVegter(inputs.points, request.s, request.refinements, &control);
         build.mesh = std::move(result.mesh);
         build.tets = result.tets;
         build.monotonicityViolations = result.monotonicityViolations;
+        build.isotopyTestFailures = result.isotopyTestFailures;
         build.cancelled = result.cancelled;
     } else if (control.stopRequested()) {
         build.cancelled = true;
@@ -95,7 +97,8 @@ std::optional<SkinComparison> compareSkinMeshes(const SkinInputs& inputs,
         ours = std::move(result.mesh);
         cancelled = result.cancelled;
     } else {
-        KvSkinResult result = meshSkinKruithofVegter(inputs.points, request.s, &control);
+        KvSkinResult result =
+            meshSkinKruithofVegter(inputs.points, request.s, request.refinements, &control);
         ours = std::move(result.mesh);
         cancelled = result.cancelled;
     }

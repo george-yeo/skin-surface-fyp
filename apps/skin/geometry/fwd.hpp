@@ -6,6 +6,7 @@ struct Aabb;
 struct BoundedVoronoi;
 class ComplexModel;
 struct ConvexPolytope;
+struct KvTetComplex;
 struct MeshingControl;
 struct MeshingStatus;
 struct MixedCell;

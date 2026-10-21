@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -11,6 +12,12 @@
 #include "skin/geometry/SkinQuadric.hpp"
 
 namespace skin::geometry {
+
+// The root of F along a -> b, as t in [0, 1], given a sign change between
+// fa = F(a) and fb = F(b). F is quadratic along the line: alpha t^2 + 2 beta t
+// + gamma.
+double crossingParameter(const SkinQuadric& q, const glm::dvec3& a, const glm::dvec3& b,
+                         double fa, double fb);
 
 // Marching tetrahedra over tets that each lie in one mixed cell. F is
 // evaluated once per point, with the quadric of the first tet that reaches it
@@ -25,6 +32,7 @@ class TetMarcher {
 
     double value(uint32_t point, uint32_t cell);
     void march(const std::array<uint32_t, 4>& tet, uint32_t cell);
+    size_t triangleCount() const { return mesh.triangles.size(); }
     // Gives zero-gradient vertices (cone points) the area-weighted normal and
     // hands over the mesh.
     SkinMesh finish();

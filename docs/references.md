@@ -43,7 +43,7 @@ molecular skin surfaces.* Proc. IEEE Visualization (VIS '04), 481–488, 2004.
   entry. Check against the publisher.
 - Relevance: dynamic skin meshing, i.e. the deformation extension.
 
-## Mesh refinement (from [KV07] §3.4, not yet used)
+## Mesh refinement (from [KV07] §3.4)
 
 **[Che97]** L. Chew. *Guaranteed quality Delaunay meshing in 3D.* Proc.
 13th Annual ACM Symposium on Computational Geometry, 391–393, 1997.
@@ -52,6 +52,8 @@ molecular skin surfaces.* Proc. IEEE Visualization (VIS '04), 481–488, 2004.
 **[Kob00]** L. Kobbelt. *√3-subdivision.* Proc. SIGGRAPH 2000, 103–112,
 2000.
 - Verified: [KV07] reference list (entry [19]).
+- Used: `KvRefinement` (1→9 = two √3 steps, per [KV07] §3.4 Fig. 7). The
+  paper itself not read; the "two steps = 1→9" structure is from [KV07].
 
 ## Algorithms used in the code
 

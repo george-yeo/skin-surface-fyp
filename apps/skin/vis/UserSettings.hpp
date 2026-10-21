@@ -47,6 +47,7 @@ struct UserSettings {
     geometry::SkinMesher skinMesher = geometry::SkinMesher::KruithofVegter;
     float skinRefineK = 1.0f; // marching tets: max tet edge / patch radius near the skin
     int skinCgalSubdivisions = 1;
+    int skinKvRefinements = 0; // Kruithof-Vegter 1-to-9 rounds
 
     bool operator==(const UserSettings&) const = default;
 };

@@ -27,6 +27,10 @@ struct SkinMesh {
     bool empty() const { return triangles.empty(); }
 };
 
+// Gives vertices with a zero normal (cone points, where grad F = 0) the
+// area-weighted normal of their triangles.
+void fillMissingNormals(SkinMesh& mesh);
+
 // Combinatorial checks on a mesh, per connected component.
 struct SkinMeshStats {
     size_t vertices = 0; // referenced by a triangle

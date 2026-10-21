@@ -7,6 +7,7 @@
 #include <unordered_map>
 #include <utility>
 
+#include "skin/geometry/KvRefinement.hpp"
 #include "skin/geometry/PointWelder.hpp"
 #include "skin/geometry/PowerComplex.hpp"
 #include "skin/geometry/SkinBuild.hpp"
@@ -953,7 +954,7 @@ KvTetComplex buildKvTetComplex(std::span<const WeightedPoint> points, double s) 
 }
 
 KvSkinResult meshSkinKruithofVegter(std::span<const WeightedPoint> points, double s,
-                                    MeshingControl* control) {
+                                    int refinements, MeshingControl* control) {
     KvSkinResult result;
     const auto stopped = [&] { return control != nullptr && control->stopRequested(); };
     if (control != nullptr) {
@@ -975,6 +976,7 @@ KvSkinResult meshSkinKruithofVegter(std::span<const WeightedPoint> points, doubl
         dimensions.push_back(static_cast<uint8_t>(cell.dimension));
     }
     TetMarcher marcher(complex.points, values, complex.quadrics, std::move(dimensions));
+    std::vector<uint32_t> triangleTets; // per triangle, the tet it lies in
     if (control != nullptr) {
         control->phase = MeshingPhase::Marching;
         control->tets = complex.tets.size();
@@ -991,8 +993,31 @@ KvSkinResult meshSkinKruithofVegter(std::span<const WeightedPoint> points, doubl
             }
         }
         marcher.march(complex.tets[t], complex.tetCells[t]);
+        triangleTets.resize(marcher.triangleCount(), static_cast<uint32_t>(t));
     }
     result.mesh = marcher.finish();
+
+    const KvRefinementResult refinement =
+        refineKvMesh(complex, values, refinements, result.mesh, triangleTets, control);
+    if (refinement.cancelled) {
+        result.cancelled = true;
+        return result;
+    }
+    result.isotopyTestFailures =
+        countIsotopyTestFailures(complex, values, result.mesh, triangleTets);
+
+    const nacre::core::Logger logger{"KruithofVegter"};
+    if (refinements > 0) {
+        logger.print("Refinement: {} rounds of 1-to-9 -> {} triangles; {} points unmoved; "
+                     "worst |F|/|grad F| at new vertices {:.3e}",
+                     refinements, result.mesh.triangles.size(), refinement.unmovedPoints,
+                     refinement.worstResidual);
+    }
+    logger.print("Lemma 23 isotopy test: {} / {} triangles fail", result.isotopyTestFailures,
+                 result.mesh.triangles.size());
+    if (result.isotopyTestFailures > 0 || refinement.unmovedPoints > 0) {
+        logger.warn("Isotopy of the refined mesh is not certified");
+    }
     return result;
 }
 

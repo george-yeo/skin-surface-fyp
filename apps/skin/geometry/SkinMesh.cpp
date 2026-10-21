@@ -26,6 +26,23 @@ struct UnionFind {
 
 } // namespace
 
+void fillMissingNormals(SkinMesh& mesh) {
+    std::vector<glm::dvec3> accumulated(mesh.positions.size(), glm::dvec3(0.0));
+    for (const auto& [a, b, c] : mesh.triangles) {
+        const glm::dvec3 n =
+            glm::cross(mesh.positions[b] - mesh.positions[a], mesh.positions[c] - mesh.positions[a]);
+        accumulated[a] += n;
+        accumulated[b] += n;
+        accumulated[c] += n;
+    }
+    for (size_t v = 0; v < mesh.normals.size(); ++v) {
+        const double length = glm::length(accumulated[v]);
+        if (mesh.normals[v] == glm::dvec3(0.0) && length > 0.0) {
+            mesh.normals[v] = accumulated[v] / length;
+        }
+    }
+}
+
 SkinMeshStats computeSkinMeshStats(const SkinMesh& mesh) {
     SkinMeshStats stats;
     stats.triangles = mesh.triangles.size();
