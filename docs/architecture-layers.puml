@@ -5,7 +5,7 @@
 '  Nacre restructure (phases 0–8). Module level: one box per namespace,
 '  grouped by CMake target. Edges are the transitive reduction of
 '  "includes headers from" — a module may also use anything reachable
-'  below it. Full table: claude/architecture.md "Dependency shape".
+'  below it.
 '  No layering violations remain; the build enforces the engine/app split.
 ' ============================================================================
 

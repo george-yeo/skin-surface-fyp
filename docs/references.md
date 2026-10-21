@@ -1,6 +1,6 @@
 # References
 
-Works the code, `CLAUDE.md` and the logs refer to. Keys are what the code
+Works the code and the logs refer to. Keys are what the code
 comments and logs use. **Verified** means the bibliographic details were
 checked against the source named; anything else is marked and must be
 checked before it goes into the report.
